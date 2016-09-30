@@ -195,6 +195,20 @@ object TimeSeriesStatisticalTests {
     })
   }
 
+  def printArray(a: Array[Double], rowLength: Int): Unit = {
+    var count = 1
+    var row = ""
+    for (x <- a) {
+      row += f"$x%1.4f "
+      if (count % 9 == 0) {
+        println(row)
+        row = ""
+      }
+      count += 1
+    }
+    println(row)
+  }
+
   /**
    * Augmented Dickey-Fuller test for a unit root in a univariate time series.
    *
@@ -207,8 +221,17 @@ object TimeSeriesStatisticalTests {
    * @return A tuple containing the test statistic and p value.
    */
   def adftest(ts: Vector, maxLag: Int, regression: String = "c"): (Double, Double) = {
+    println(s"Augmented Dickey-Full ts length: ${ts.size}")
     val breezeTs = toBreeze(ts)
-    val tsDiff = UnivariateTimeSeries.differencesAtLag(ts, 1)
+
+    // The vector that we get back from differencesAtLag preserves the first element so that so that the vector
+    // returned is size-preserving.  For ADF, we just want the differenced values, so we slice to get a vector
+    // that excludes the first element.
+    val tsDiff = new DenseVector(UnivariateTimeSeries.differencesAtLag(ts, 1).toArray.slice(1, ts.size))
+    val tsDiffArray = tsDiff.toArray
+
+    println(s"ts diff (length: ${tsDiffArray.length}):" )
+    printArray(tsDiff.toArray, 9)
     val lagMat = Lag.lagMatTrimBoth(tsDiff, maxLag, true)
     val nObs = lagMat.numRows
 
@@ -219,6 +242,11 @@ object TimeSeriesStatisticalTests {
       breezeTs(ts.size - nObs - 1 until ts.size - 1).toDenseVector.toDenseMatrix.t
     // trim
     val tsdShort = toBreeze(tsDiff)(tsDiff.size - nObs to tsDiff.size - 1)
+
+
+    val tsdShortArray = tsdShort.toArray
+    println(s"tsd short (length: ${tsdShortArray.length}):")
+    printArray(tsdShortArray, 9)
 
     val ols = new OLSMultipleLinearRegression()
     ols.setNoIntercept(true)
@@ -254,6 +282,8 @@ object TimeSeriesStatisticalTests {
       diffsSum += diff * diff
       i += 1
     }
+    println(s"diffSum: ${diffsSum}")
+    println(s"residsSum ${residsSum}")
     diffsSum / residsSum
   }
 
@@ -318,7 +348,11 @@ object TimeSeriesStatisticalTests {
     val origFactors = MatrixUtil.matToRowArrs(factors) // X
     val auxOLS = new OLSMultipleLinearRegression() // auxiliary OLS for bp test
     auxOLS.newSampleData(residualsSquared, origFactors) // u^2 = beta * X
-    val bpstat = residuals.size * auxOLS.calculateRSquared()
+    val r2 = auxOLS.calculateRSquared()
+    val rsize = residuals.size
+    val bpstat = rsize * r2
+    println("r squared = " + r2.toString)
+    println("r size = " + rsize.toString)
     // auxOLS uses intercept term, so (# of regressors - 1) = # factors cols
     val df = factors.numCols
     (bpstat, 1 - new ChiSquaredDistribution(df).cumulativeProbability(bpstat))
